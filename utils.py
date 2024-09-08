@@ -1,9 +1,11 @@
+import base64
 import os
 import json
 import time
 import yaml
 import random
 import requests
+from typing import List, Dict, Tuple, Union
 
 from typing import Optional
 from glob import glob
@@ -320,6 +322,44 @@ def chat_completion_cohere(model, messages, temperature, max_tokens):
     
     return output
 
+def encode_image(image_path):
+  with open(image_path, "rb") as image_file:
+    return base64.b64encode(image_file.read()).decode('utf-8')
+
+def _content_to_openai_format(content: Union[str, Tuple[str, List[Dict[str, str]]]], images_base_dir: str) -> Union[str, List[Dict[str, str]]]:
+    if isinstance(content, str):
+        return content
+    elif isinstance(content, list):
+        content_in_openai_format = []
+        text, images = content
+        content_in_openai_format.append({"type": "text", "text": text})
+        for image in images:
+            image_path = os.path.join(images_base_dir, f"{image}.png")
+            image_base64_str = encode_image(image_path)
+            content_in_openai_format.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_base64_str}"}})
+        return content_in_openai_format
+    else:
+        raise ValueError(f"Unknown content type: {type(content)}")
+
+def chat_completion_litellm(model, messages, temperature, max_tokens):
+    import litellm
+
+    output = API_ERROR_OUTPUT
+    for _ in range(API_MAX_RETRY):
+        try:
+            response = litellm.completion(model=model, messages=messages, temperature=temperature, max_tokens=max_tokens)
+            output = response["choices"][0]["message"]["content"]
+            break
+        except Exception as e:
+            print(e)
+    
+    return output
+
+def get_filepath(args_filepath: str, default_filepath: str):
+    if args_filepath:
+        return args_filepath
+    else:
+        return default_filepath
 
 def reorg_answer_file(answer_file):
     """Sort by question id and de-duplication"""
