@@ -139,7 +139,7 @@ if __name__ == "__main__":
         
     if configs["reference"]:
         assert not configs["reference"] in models, "ERROR: one of the models being evaluated is used as reference."
-        ref_answers = [answer_dir[model] for model in configs["reference"]]
+        ref_answers = [model_answers[model] for model in configs["reference"]]
     else:
         ref_answers = None
     
