@@ -170,6 +170,11 @@ Fill in your API endpoint in `config/api_config.yaml`. We support OpenAI compati
 
 You may use inference engine such as [vLLM](https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html) or [SGLang](https://github.com/sgl-project/sglang?tab=readme-ov-file#using-local-models) to host your model with an OpenAI compatible API server.
 
+#### Tips for vLLM / OpenAI-compatible local servers
+
+- **Timeouts**: you can add `timeout: <seconds>` under the endpoint entry in `config/api_config.yaml` for local servers (helps with long generations).
+- **Parallelism**: set `parallel` to something your server can actually sustain (too high can increase queueing and make progress look “stuck”).
+
 We also include support for fast built-in inference with SGLang, see examples in `config/api_config.yaml` and implementaton in `utils/completion.py`. See `misc/sglang_setup.bash` for environment setup.
 
 ### Step 2. Generate Model Answers

@@ -14,6 +14,7 @@ from glob import glob
 from tqdm import tqdm
 
 from utils.bedrock_utils import create_llama3_body, create_nova_messages, extract_answer
+from utils.openai_client import get_openai_client
 
 # API setting constants
 API_MAX_RETRY = 3
@@ -24,7 +25,31 @@ registered_api_completion = {}
 registered_engine_completion = {}
 
 
+def _tqdm_write(msg: str) -> None:
+    """Write a message to stdout without corrupting tqdm progress bars.
+
+    In multi-threaded environments, direct print() calls can interleave with
+    tqdm's progress bar output, causing garbled console output. This helper
+    uses tqdm.write() which properly coordinates with active progress bars.
+
+    Args:
+        msg: The message string to write to stdout.
+    """
+    try:
+        tqdm.write(msg)
+    except Exception:
+        print(msg)
+
+
 def register_api(api_type):
+    """Decorator to register a function as an API completion handler.
+
+    Args:
+        api_type: String identifier for the API type (e.g., 'openai', 'anthropic').
+
+    Returns:
+        Decorator function that registers the wrapped function.
+    """
     def decorator(func):
         registered_api_completion[api_type] = func
         return func
@@ -33,6 +58,14 @@ def register_api(api_type):
 
 
 def register_engine(engine_type):
+    """Decorator to register a function as an engine completion handler.
+
+    Args:
+        engine_type: String identifier for the engine type (e.g., 'sglang').
+
+    Returns:
+        Decorator function that registers the wrapped function.
+    """
     def decorator(func):
         registered_engine_completion[engine_type] = func
         return func
@@ -119,15 +152,27 @@ def make_config(config_file: str) -> dict:
 
 @register_api("openai")
 def chat_completion_openai(model, messages, temperature, max_tokens, api_dict=None, **kwargs):
+    """Send a chat completion request to an OpenAI or OpenAI-compatible server.
+
+    Uses a thread-local cached client to avoid per-request connection overhead,
+    which is especially important for local inference servers like vLLM.
+
+    Args:
+        model: The model identifier to use for completion.
+        messages: List of message dicts with 'role' and 'content' keys.
+        temperature: Sampling temperature for generation.
+        max_tokens: Maximum number of tokens to generate.
+        api_dict: Optional dict with 'api_base', 'api_key', 'timeout', and
+            'model_name' (to override the model parameter).
+        **kwargs: Additional arguments (unused).
+
+    Returns:
+        Dict with 'answer' key containing the model response, or API_ERROR_OUTPUT on failure.
+    """
     import openai
-    if api_dict:
-        client = openai.OpenAI(
-            base_url=api_dict["api_base"],
-            api_key=api_dict["api_key"],
-        )
-    else:
-        client = openai.OpenAI()
-        
+
+    client = get_openai_client(api_dict)
+
     if api_dict and "model_name" in api_dict:
         model = api_dict["model_name"]
     
@@ -145,31 +190,49 @@ def chat_completion_openai(model, messages, temperature, max_tokens, api_dict=No
             }
             break
         except openai.RateLimitError as e:
-            print(type(e), e)
+            _tqdm_write(f"{type(e).__name__}: {e}")
             time.sleep(API_RETRY_SLEEP)
         except openai.BadRequestError as e:
-            print(messages)
-            print(type(e), e)
-        except KeyError:
-            print(type(e), e)
+            # Usually deterministic; don't spam full messages in multi-threaded runs.
+            _tqdm_write(f"{type(e).__name__}: {e}")
             break
+        except (openai.APITimeoutError, openai.APIConnectionError, openai.InternalServerError) as e:
+            # Common transient errors with local OpenAI-compatible servers (e.g., vLLM)
+            _tqdm_write(f"{type(e).__name__}: {e}")
+            time.sleep(API_RETRY_SLEEP)
+        except KeyError as e:
+            _tqdm_write(f"{type(e).__name__}: {e}")
+            break
+        except Exception as e:
+            # Keep the worker alive and allow the main progress loop to continue.
+            _tqdm_write(f"{type(e).__name__}: {e}")
+            time.sleep(API_RETRY_SLEEP)
     
     return output
 
 
 @register_api("openai_thinking")
 def chat_completion_openai_thinking(model, messages, api_dict=None, **kwargs):
+    """Send a chat completion request to OpenAI models with reasoning/thinking support.
+
+    Uses the cached OpenAI client and supports models with extended reasoning
+    capabilities (e.g., o1, o3). Handles rate limits with fixed delay (API_RETRY_SLEEP).
+
+    Args:
+        model: The model identifier to use for completion.
+        messages: List of message dicts with 'role' and 'content' keys.
+        api_dict: Optional dict with 'api_base', 'api_key', and 'timeout' settings.
+        **kwargs: Additional arguments, notably 'reasoning_effort' (default: 'medium').
+
+    Returns:
+        Dict with 'answer' key containing the model response, or API_ERROR_OUTPUT on failure.
+    """
     import openai
-    
-    if api_dict:
-        client = openai.OpenAI(
-            api_key=api_dict["api_key"],
-        )
-    else:
-        client = openai.OpenAI()
+
+    client = get_openai_client(api_dict)
     
     output = API_ERROR_OUTPUT
-    for i in range(API_MAX_RETRY):
+    for _ in range(API_MAX_RETRY):
         try:
             completion = client.chat.completions.create(
                 model=model,
@@ -181,13 +244,13 @@ def chat_completion_openai_thinking(model, messages, api_dict=None, **kwargs):
             }
             break
         except openai.RateLimitError as e:
-            print(type(e), e)
+            _tqdm_write(f"{type(e).__name__}: {e}")
             time.sleep(API_RETRY_SLEEP)
         except openai.BadRequestError as e:
-            print(messages)
-            print(type(e), e)
-        except KeyError:
-            print(type(e), e)
+            _tqdm_write(f"{type(e).__name__}: {e}")
+            break
+        except KeyError as e:
+            _tqdm_write(f"{type(e).__name__}: {e}")
             break
     
     return output

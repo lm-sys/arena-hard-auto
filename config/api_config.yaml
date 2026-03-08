@@ -82,6 +82,8 @@ gemma-3-27b-it:
     endpoints:
         - api_base: http://0.0.0.0:<port_number>/v1
           api_key: '-'
+          # Optional: timeout in seconds for OpenAI-compatible local servers (e.g., vLLM)
+          # timeout: 1800
     api_type: openai
     parallel: 128
     max_tokens: 8196
