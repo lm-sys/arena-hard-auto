@@ -860,6 +860,44 @@ def sglang_completion(
     pass
 
 
+@register_api("litellm")
+def chat_completion_litellm(model, messages, temperature, max_tokens, api_dict=None, **kwargs):
+    try:
+        import litellm
+    except ImportError:
+        raise ImportError("litellm package not installed. Run: pip install litellm")
+
+    if api_dict and "model_name" in api_dict:
+        model = api_dict["model_name"]
+
+    completion_kwargs = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "drop_params": True,
+    }
+    if api_dict:
+        if "api_key" in api_dict:
+            completion_kwargs["api_key"] = api_dict["api_key"]
+        if "api_base" in api_dict:
+            completion_kwargs["api_base"] = api_dict["api_base"]
+
+    output = API_ERROR_OUTPUT
+    for _ in range(API_MAX_RETRY):
+        try:
+            response = litellm.completion(**completion_kwargs)
+            output = {
+                "answer": response.choices[0].message.content
+            }
+            break
+        except Exception as e:
+            print(type(e), e)
+            time.sleep(API_RETRY_SLEEP)
+
+    return output
+
+
 @register_api("aws_claude")
 def chat_completion_aws_bedrock_claude(messages, api_dict=None, aws_region="us-west-2", **kwargs):
     """

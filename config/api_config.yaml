@@ -88,6 +88,35 @@ gemma-3-27b-it:
     temperature: 0.0
 
 
+# LiteLLM examples (unified gateway to 100+ providers)
+# See https://docs.litellm.ai/docs/providers for supported providers
+#
+# litellm-claude:
+#     model: anthropic/claude-sonnet-4-6
+#     endpoints: null
+#     api_type: litellm
+#     parallel: 32
+#     max_tokens: 4096
+#     temperature: 0.0
+#
+# litellm-bedrock:
+#     model: bedrock/anthropic.claude-3-sonnet-20240229-v1:0
+#     endpoints: null
+#     api_type: litellm
+#     parallel: 16
+#     max_tokens: 4096
+#     temperature: 0.0
+#
+# litellm-proxy:
+#     model: my-model
+#     endpoints:
+#         - api_base: http://localhost:4000
+#           api_key: sk-proxy-key
+#     api_type: litellm
+#     parallel: 64
+#     max_tokens: 4096
+#     temperature: 0.0
+
 #******** AWS NOVA MODEL *****************#
 aws_nova_light_v1:
     model: aws_nova_light_v1
